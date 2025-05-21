@@ -37,14 +37,14 @@ def load_data(storage_path: str) -> tuple[set, dict, list]:
 
         # Create tables if they don't exist
         # Modify keywords table to store keyword and cipher_method
-        cursor.execute("CREATE TABLE IF NOT EXISTS tested_pairs (keyword TEXT, cipher_method TEXT, PRIMARY KEY (keyword, cipher_method))")
+        cursor.execute("CREATE TABLE IF NOT EXISTS tested_pairs (tab_name TEXT, keyword TEXT, cipher_method TEXT, PRIMARY KEY (tab_name, keyword, cipher_method))")
         cursor.execute("CREATE TABLE IF NOT EXISTS problems (tab_name TEXT PRIMARY KEY, ciphertext TEXT, keywords TEXT)") # keywords stored as comma-separated string
         # Ensure results table has cipher_method column and tab_name
         cursor.execute("CREATE TABLE IF NOT EXISTS results (tab_name TEXT, keyword TEXT, decrypted_text TEXT, is_meaningful INTEGER, cipher_method TEXT)")
 
         # Load tested pairs
-        cursor.execute("SELECT keyword, cipher_method FROM tested_pairs")
-        tested_pairs = set(row for row in cursor.fetchall()) # Load tuples
+        cursor.execute("SELECT tab_name, keyword, cipher_method FROM tested_pairs")
+        tested_pairs = set(row for row in cursor.fetchall()) # Load (tab_name, keyword, cipher_method) tuples
 
         # Load problems first to get all tab names
         cursor.execute("SELECT tab_name, ciphertext, keywords FROM problems")
@@ -139,13 +139,13 @@ def save_data(tested_pairs: set, problems_data: dict, storage_path: str):
         cursor = conn.cursor()
 
         # Create tables if they don't exist
-        cursor.execute("CREATE TABLE IF NOT EXISTS tested_pairs (keyword TEXT, cipher_method TEXT, PRIMARY KEY (keyword, cipher_method))")
+        cursor.execute("CREATE TABLE IF NOT EXISTS tested_pairs (tab_name TEXT, keyword TEXT, cipher_method TEXT, PRIMARY KEY (tab_name, keyword, cipher_method))")
         cursor.execute("CREATE TABLE IF NOT EXISTS results (tab_name TEXT, keyword TEXT, decrypted_text TEXT, is_meaningful INTEGER, cipher_method TEXT)")
 
         # Save tested pairs
         cursor.execute("DELETE FROM tested_pairs")
-        for keyword, cipher_method in tested_pairs: # Iterate through tuples
-            cursor.execute("INSERT OR IGNORE INTO tested_pairs (keyword, cipher_method) VALUES (?, ?)", (keyword, cipher_method))
+        for tab_name, keyword, cipher_method in tested_pairs: # Iterate through (tab_name, keyword, cipher_method) tuples
+            cursor.execute("INSERT OR IGNORE INTO tested_pairs (tab_name, keyword, cipher_method) VALUES (?, ?, ?)", (tab_name, keyword, cipher_method))
 
         # Save problems (no change needed here)
         cursor.execute("DELETE FROM problems")
@@ -259,19 +259,19 @@ def run_comprehensive_decryption_tests(ciphertext: str, keywords_input: str, tes
         
         # Handle ciphers that don't need keywords
         if cipher_method in ['reverse', 'rot13', 'atbash']:
-            current_pair = ('', cipher_method)
+            current_pair = (tab_name, '', cipher_method)
             if current_pair not in tested_pairs:
                 print(f"Testing {cipher_method} (no keyword required)...")
                 result = apply_cipher(ciphertext, '', cipher_method)
                 is_meaningful = False
                 
                 if not result.startswith("Error:"):
-                    is_meaningful = evaluate_decryption_result(result)
+                    #is_meaningful = evaluate_decryption_result(result)
                     # Save result if not error
                     result_to_save = {
                         'keyword': '',
                         'decrypted_text': result,
-                        'is_meaningful': is_meaningful,
+                        'is_meaningful': "maybe",
                         'cipher_method': cipher_method
                     }
                     save_single_result(tab_name, result_to_save, STORAGE_FILE)
@@ -281,7 +281,7 @@ def run_comprehensive_decryption_tests(ciphertext: str, keywords_input: str, tes
                 tested_pairs.add(current_pair)
                 new_tests += 1
             else:
-                print(f"{cipher_method} already tested. Skipping.")
+                print(f"{cipher_method} already tested for this problem. Skipping.")
             total_tests += 1
             continue
         
@@ -291,7 +291,7 @@ def run_comprehensive_decryption_tests(ciphertext: str, keywords_input: str, tes
             print(f"Generated {len(affine_combos)} affine combinations: {affine_combos}")
             
             for combo in affine_combos:
-                current_pair = (combo, cipher_method)
+                current_pair = (tab_name, combo, cipher_method)
                 if current_pair not in tested_pairs:
                     print(f"Testing affine cipher with combination: {combo}")
                     result = apply_cipher(ciphertext, combo, cipher_method)
@@ -311,7 +311,7 @@ def run_comprehensive_decryption_tests(ciphertext: str, keywords_input: str, tes
                     tested_pairs.add(current_pair)
                     new_tests += 1
                 else:
-                    print(f"Affine combination {combo} already tested. Skipping.")
+                    print(f"Affine combination {combo} already tested for this problem. Skipping.")
                 total_tests += 1
             continue
         
@@ -321,7 +321,7 @@ def run_comprehensive_decryption_tests(ciphertext: str, keywords_input: str, tes
             print(f"Found {len(alphabets)} valid substitution alphabets: {alphabets}")
             
             for alphabet in alphabets:
-                current_pair = (alphabet, cipher_method)
+                current_pair = (tab_name, alphabet, cipher_method)
                 if current_pair not in tested_pairs:
                     print(f"Testing simple substitution with alphabet: {alphabet}")
                     result = apply_cipher(ciphertext, alphabet, cipher_method)
@@ -341,16 +341,16 @@ def run_comprehensive_decryption_tests(ciphertext: str, keywords_input: str, tes
                     tested_pairs.add(current_pair)
                     new_tests += 1
                 else:
-                    print(f"Substitution alphabet {alphabet} already tested. Skipping.")
+                    print(f"Substitution alphabet {alphabet} already tested for this problem. Skipping.")
                 total_tests += 1
             continue
         
         # Test regular keywords for other ciphers
         for keyword in keywords:
-            current_pair = (keyword, cipher_method)
+            current_pair = (tab_name, keyword, cipher_method)
             
             if current_pair in tested_pairs:
-                print(f"Keyword-cipher pair ({keyword}, {cipher_method}) already tested. Skipping.")
+                print(f"Keyword-cipher pair ({keyword}, {cipher_method}) already tested for this problem. Skipping.")
                 total_tests += 1
                 continue
             
